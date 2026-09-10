@@ -1,0 +1,5 @@
+*.env
+*.key
+settings.json
+.ocr-translate/
+Thumbs.db
