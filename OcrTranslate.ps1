@@ -120,6 +120,7 @@ using System;
 using System.Runtime.InteropServices;
 public class ScreenMetrics {
   [DllImport("user32.dll")] public static extern int GetSystemMetrics(int nIndex);
+  [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vKey);
 }
 "@
   }
@@ -133,64 +134,116 @@ public class ScreenMetrics {
   }
   $script:vsLeft = $vsLeft
   $script:vsTop = $vsTop
-  $full = New-Object System.Drawing.Bitmap $vsW, $vsH
-  $g = [System.Drawing.Graphics]::FromImage($full)
-  $g.CopyFromScreen($vsLeft, $vsTop, 0, 0, (New-Object System.Drawing.Size $vsW, $vsH))
-  $g.Dispose()
+  Close-InPlace
+  $savedBounds = $form.Bounds
+  $form.Location = New-Object System.Drawing.Point -20000, -20000
+  [System.Windows.Forms.Application]::DoEvents()
+  Start-Sleep -Milliseconds 50
 
+  $full = $null
+  $tip = $null
+  $boxForm = $null
   $script:ok = $false
   $script:crop = $null
-  $script:dragging = $false
-  $overlay = New-Object System.Windows.Forms.Form
-  $overlay.FormBorderStyle = "None"
-  $overlay.StartPosition = "Manual"
-  $overlay.Bounds = New-Object System.Drawing.Rectangle $vsLeft, $vsTop, $vsW, $vsH
-  $overlay.TopMost = $true
-  $overlay.ShowInTaskbar = $false
-  $overlay.BackgroundImage = $full
-  $overlay.BackgroundImageLayout = "None"
-  $overlay.Cursor = [System.Windows.Forms.Cursors]::Cross
-  $overlay.KeyPreview = $true
-  $box = New-Object System.Windows.Forms.Panel
-  $box.BorderStyle = "FixedSingle"
-  $box.BackColor = [System.Drawing.Color]::FromArgb(50, 0, 170, 255)
-  $box.Visible = $false
-  $overlay.Controls.Add($box)
-  $overlay.Add_MouseDown({
-    if ($_.Button -ne [System.Windows.Forms.MouseButtons]::Left) { return }
-    $script:dragging = $true
-    $script:startX = $_.X; $script:startY = $_.Y
-    $box.Visible = $true
-    $box.Location = New-Object System.Drawing.Point $_.X, $_.Y
-    $box.Size = New-Object System.Drawing.Size 1, 1
-  })
-  $overlay.Add_MouseMove({
-    if (-not $script:dragging) { return }
-    $x = [Math]::Min($script:startX, $_.X)
-    $y = [Math]::Min($script:startY, $_.Y)
-    $box.Location = New-Object System.Drawing.Point $x, $y
-    $box.Size = New-Object System.Drawing.Size ([Math]::Abs($_.X - $script:startX)), ([Math]::Abs($_.Y - $script:startY))
-  })
-  $overlay.Add_MouseUp({
-    if (-not $script:dragging) { return }
-    $script:dragging = $false
-    $x = [Math]::Min($script:startX, $_.X)
-    $y = [Math]::Min($script:startY, $_.Y)
-    $w = [Math]::Abs($_.X - $script:startX)
-    $h = [Math]::Abs($_.Y - $script:startY)
-    if ($w -ge 8 -and $h -ge 8) {
-      $script:crop = $full.Clone((New-Object System.Drawing.Rectangle $x, $y, $w, $h), $full.PixelFormat)
-      $script:capX = $script:vsLeft + $x
-      $script:capY = $script:vsTop + $y
-      $script:capW = $w
-      $script:capH = $h
-      $script:ok = $true
+  try {
+    $full = New-Object System.Drawing.Bitmap $vsW, $vsH
+    $g = [System.Drawing.Graphics]::FromImage($full)
+    $g.CopyFromScreen($vsLeft, $vsTop, 0, 0, (New-Object System.Drawing.Size $vsW, $vsH))
+    $g.Dispose()
+
+    $tip = New-Object System.Windows.Forms.Form
+    $tip.FormBorderStyle = "None"
+    $tip.StartPosition = "Manual"
+    $tip.Size = New-Object System.Drawing.Size 220, 28
+    $tip.TopMost = $true
+    $tip.ShowInTaskbar = $false
+    $tip.BackColor = [System.Drawing.Color]::FromArgb(27, 31, 39)
+    $tipLbl = New-Object System.Windows.Forms.Label
+    $tipLbl.Text = "拖框选区，Esc 取消"
+    $tipLbl.Dock = "Fill"
+    $tipLbl.TextAlign = "MiddleCenter"
+    $tipLbl.ForeColor = [System.Drawing.Color]::FromArgb(232, 234, 237)
+    $tip.Controls.Add($tipLbl)
+    $tip.Show()
+
+    $boxForm = New-Object System.Windows.Forms.Form
+    $boxForm.FormBorderStyle = "None"
+    $boxForm.StartPosition = "Manual"
+    $boxForm.TopMost = $true
+    $boxForm.ShowInTaskbar = $false
+    $boxForm.BackColor = [System.Drawing.Color]::FromArgb(61, 184, 168)
+    $boxForm.Opacity = 0.35
+    $boxForm.Enabled = $false
+    $boxForm.Visible = $false
+
+    function Key-Down($vk) {
+      return ([ScreenMetrics]::GetAsyncKeyState([int]$vk) -band 0x8000) -ne 0
     }
-    $overlay.Close()
-  })
-  $overlay.Add_KeyDown({ if ($_.KeyCode -eq "Escape") { $overlay.Close() } })
-  [void]$overlay.ShowDialog()
-  $full.Dispose()
+    $t0 = [Environment]::TickCount
+    while (Key-Down 0x01) {
+      $p = [System.Windows.Forms.Cursor]::Position
+      $tip.Location = New-Object System.Drawing.Point ($p.X + 18), ($p.Y + 18)
+      [System.Windows.Forms.Application]::DoEvents()
+      Start-Sleep -Milliseconds 10
+      if (([Environment]::TickCount - $t0) -gt 8000) { break }
+    }
+    $t0 = [Environment]::TickCount
+    $got = $false
+    while (-not $got) {
+      if (Key-Down 0x1B) { return $null }
+      $p = [System.Windows.Forms.Cursor]::Position
+      $tip.Location = New-Object System.Drawing.Point ($p.X + 18), ($p.Y + 18)
+      if (Key-Down 0x01) {
+        $got = $true
+        $script:startX = $p.X
+        $script:startY = $p.Y
+        $tip.Hide()
+        $boxForm.Bounds = New-Object System.Drawing.Rectangle $p.X, $p.Y, 1, 1
+        $boxForm.Show()
+        break
+      }
+      [System.Windows.Forms.Application]::DoEvents()
+      Start-Sleep -Milliseconds 10
+      if (([Environment]::TickCount - $t0) -gt 60000) { return $null }
+    }
+    while (Key-Down 0x01) {
+      if (Key-Down 0x1B) { return $null }
+      $p = [System.Windows.Forms.Cursor]::Position
+      $x = [Math]::Min($script:startX, $p.X)
+      $y = [Math]::Min($script:startY, $p.Y)
+      $w = [Math]::Max(1, [Math]::Abs($p.X - $script:startX))
+      $h = [Math]::Max(1, [Math]::Abs($p.Y - $script:startY))
+      $boxForm.Bounds = New-Object System.Drawing.Rectangle $x, $y, $w, $h
+      [System.Windows.Forms.Application]::DoEvents()
+      Start-Sleep -Milliseconds 10
+    }
+    $p = [System.Windows.Forms.Cursor]::Position
+    $x = [Math]::Min($script:startX, $p.X)
+    $y = [Math]::Min($script:startY, $p.Y)
+    $w = [Math]::Abs($p.X - $script:startX)
+    $h = [Math]::Abs($p.Y - $script:startY)
+    if ($w -ge 8 -and $h -ge 8) {
+      $rx = $x - $vsLeft
+      $ry = $y - $vsTop
+      if ($rx -lt 0) { $rx = 0 }
+      if ($ry -lt 0) { $ry = 0 }
+      if ($rx + $w -gt $vsW) { $w = $vsW - $rx }
+      if ($ry + $h -gt $vsH) { $h = $vsH - $ry }
+      if ($w -ge 8 -and $h -ge 8) {
+        $script:crop = $full.Clone((New-Object System.Drawing.Rectangle $rx, $ry, $w, $h), $full.PixelFormat)
+        $script:capX = $x
+        $script:capY = $y
+        $script:capW = $w
+        $script:capH = $h
+        $script:ok = $true
+      }
+    }
+  } finally {
+    try { if ($tip) { $tip.Close(); $tip.Dispose() } } catch {}
+    try { if ($boxForm) { $boxForm.Close(); $boxForm.Dispose() } } catch {}
+    $form.Bounds = $savedBounds
+    if ($full) { $full.Dispose() }
+  }
   if (-not $script:ok) { return $null }
   return $script:crop
 }
@@ -513,10 +566,6 @@ function Run-OcrFromBitmap($bmp, $inplace = $false) {
   $status.ForeColor = [System.Drawing.Color]::FromArgb(139, 147, 167)
   $status.Text = "识别中，只请求官方 API..."
   $form.Refresh()
-  if ($inplace) {
-    $script:last = @{ original = ""; zh = "识别中..."; en = "" }
-    Show-InPlace "识别中，结果出在框选原处"
-  }
   $dataUrl = Bitmap-ToDataUrl $bmp
   try {
     if ($script:engine -eq "groq") {
@@ -531,13 +580,13 @@ function Run-OcrFromBitmap($bmp, $inplace = $false) {
     if ($script:target -eq "en") { $script:transSide = "en" } else { $script:transSide = "zh" }
     Show-Trans
     $status.Text = "完成，译文在框选原处。点浮层可回原文。"
-    if ($inplace) { Refresh-InPlaceText } else { Show-InPlace "打开图片的结果" }
+    if ($inplace) { Show-InPlace "点文字可回原文" } else { Show-InPlace "打开图片的结果" }
   } catch {
     $status.Text = $_.Exception.Message
     $status.ForeColor = [System.Drawing.Color]::FromArgb(239, 107, 107)
     if ($inplace) {
       $script:last = @{ original = ""; zh = $_.Exception.Message; en = "" }
-      Refresh-InPlaceText
+      Show-InPlace "识别失败"
     }
   }
 }
