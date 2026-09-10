@@ -157,12 +157,12 @@ public class ScreenMetrics {
     $tip.Size = New-Object System.Drawing.Size 220, 28
     $tip.TopMost = $true
     $tip.ShowInTaskbar = $false
-    $tip.BackColor = [System.Drawing.Color]::FromArgb(27, 31, 39)
+    $tip.BackColor = [System.Drawing.Color]::FromArgb(255, 255, 255)
     $tipLbl = New-Object System.Windows.Forms.Label
     $tipLbl.Text = "拖框选区，Esc 取消"
     $tipLbl.Dock = "Fill"
     $tipLbl.TextAlign = "MiddleCenter"
-    $tipLbl.ForeColor = [System.Drawing.Color]::FromArgb(232, 234, 237)
+    $tipLbl.ForeColor = [System.Drawing.Color]::FromArgb(31, 42, 55)
     $tip.Controls.Add($tipLbl)
     $tip.Show()
 
@@ -171,7 +171,7 @@ public class ScreenMetrics {
     $boxForm.StartPosition = "Manual"
     $boxForm.TopMost = $true
     $boxForm.ShowInTaskbar = $false
-    $boxForm.BackColor = [System.Drawing.Color]::FromArgb(61, 184, 168)
+    $boxForm.BackColor = [System.Drawing.Color]::FromArgb(37, 99, 235)
     $boxForm.Opacity = 0.35
     $boxForm.Enabled = $false
     $boxForm.Visible = $false
@@ -314,20 +314,34 @@ function Parse-Result([string]$text) {
 
 Load-Settings
 
+$uiBg = [System.Drawing.Color]::FromArgb(244, 247, 250)
+$uiPaper = [System.Drawing.Color]::FromArgb(255, 255, 255)
+$uiInk = [System.Drawing.Color]::FromArgb(31, 42, 55)
+$uiMute = [System.Drawing.Color]::FromArgb(102, 112, 133)
+$uiLine = [System.Drawing.Color]::FromArgb(208, 213, 221)
+$uiBrand = [System.Drawing.Color]::FromArgb(37, 99, 235)
+$uiHover = [System.Drawing.Color]::FromArgb(234, 240, 255)
+$uiOk = [System.Drawing.Color]::FromArgb(15, 118, 110)
+$uiErr = [System.Drawing.Color]::FromArgb(220, 38, 38)
+$uiPreview = [System.Drawing.Color]::FromArgb(232, 238, 245)
+$uiFont = New-Object System.Drawing.Font "Microsoft YaHei UI", 9
+
 $form = New-Object OcrHotKeyForm
-$form.Text = "截屏识别翻译（本机单窗口）"
-$form.Size = New-Object System.Drawing.Size 980, 740
+$form.Text = "截屏识别翻译"
+$form.Size = New-Object System.Drawing.Size 1000, 800
+$form.MinimumSize = New-Object System.Drawing.Size 960, 740
 $form.StartPosition = "CenterScreen"
 $form.KeyPreview = $true
-$form.BackColor = [System.Drawing.Color]::FromArgb(18, 20, 24)
-$form.ForeColor = [System.Drawing.Color]::FromArgb(232, 234, 237)
-$form.Font = New-Object System.Drawing.Font "Segoe UI", 9
+$form.BackColor = $uiBg
+$form.ForeColor = $uiInk
+$form.Font = $uiFont
 
 function New-Lbl($text, $x, $y, $w=120, $h=22) {
   $l = New-Object System.Windows.Forms.Label
   $l.Text = $text; $l.Location = New-Object System.Drawing.Point $x, $y
   $l.Size = New-Object System.Drawing.Size $w, $h
-  $l.ForeColor = [System.Drawing.Color]::FromArgb(139, 147, 167)
+  $l.ForeColor = $uiMute
+  $l.BackColor = [System.Drawing.Color]::Transparent
   $form.Controls.Add($l); return $l
 }
 function New-Btn($text, $x, $y, $w=90, $h=28) {
@@ -335,8 +349,11 @@ function New-Btn($text, $x, $y, $w=90, $h=28) {
   $b.Text = $text; $b.Location = New-Object System.Drawing.Point $x, $y
   $b.Size = New-Object System.Drawing.Size $w, $h
   $b.FlatStyle = "Flat"
-  $b.BackColor = [System.Drawing.Color]::FromArgb(27, 31, 39)
-  $b.ForeColor = $form.ForeColor
+  $b.BackColor = $uiPaper
+  $b.ForeColor = $uiInk
+  $b.FlatAppearance.BorderColor = $uiLine
+  $b.FlatAppearance.MouseOverBackColor = $uiHover
+  $b.Cursor = [System.Windows.Forms.Cursors]::Hand
   $form.Controls.Add($b); return $b
 }
 function New-Box($x, $y, $w, $h, $multi=$false, $pwd=$false) {
@@ -346,47 +363,56 @@ function New-Box($x, $y, $w, $h, $multi=$false, $pwd=$false) {
   $t.Multiline = $multi
   $t.ScrollBars = if ($multi) { "Vertical" } else { "None" }
   $t.UseSystemPasswordChar = $pwd
-  $t.BackColor = [System.Drawing.Color]::FromArgb(16, 19, 24)
-  $t.ForeColor = $form.ForeColor
+  $t.BackColor = $uiPaper
+  $t.ForeColor = $uiInk
   $t.BorderStyle = "FixedSingle"
-  if ($multi) { $t.Font = New-Object System.Drawing.Font "Consolas", 9 }
+  if ($multi) { $t.Font = New-Object System.Drawing.Font "Microsoft YaHei UI", 10 }
   $form.Controls.Add($t); return $t
 }
 
-New-Lbl "本机单窗口。Key 不落盘。无后台进程。网络只打 DeepSeek / Groq 官网。关掉窗口即退出。" 12 8 940 20 | Out-Null
-$btnShot = New-Btn "截屏识别" 12 36 100 30
-$btnShot.BackColor = [System.Drawing.Color]::FromArgb(61, 184, 168)
-$btnShot.ForeColor = [System.Drawing.Color]::FromArgb(6, 34, 30)
-$btnFile = New-Btn "打开图片" 118 36 90 30
+New-Lbl "本机单窗口。Key 不落盘。无后台进程。网络只打 DeepSeek / Groq 官网。关掉窗口即退出。" 12 8 960 20 | Out-Null
+$btnShot = New-Btn "截屏识别" 12 36 108 32
+$btnShot.BackColor = $uiBrand
+$btnShot.ForeColor = [System.Drawing.Color]::White
+$btnShot.FlatAppearance.BorderColor = $uiBrand
+$btnShot.FlatAppearance.MouseOverBackColor = [System.Drawing.Color]::FromArgb(29, 78, 216)
+$btnFile = New-Btn "打开图片" 126 36 90 32
 $cmbEngine = New-Object System.Windows.Forms.ComboBox
 $cmbEngine.DropDownStyle = "DropDownList"
-$cmbEngine.Location = New-Object System.Drawing.Point 214, 38
-$cmbEngine.Size = New-Object System.Drawing.Size 160, 28
+$cmbEngine.Location = New-Object System.Drawing.Point 222, 40
+$cmbEngine.Size = New-Object System.Drawing.Size 168, 28
+$cmbEngine.FlatStyle = "Flat"
+$cmbEngine.BackColor = $uiPaper
+$cmbEngine.ForeColor = $uiInk
 [void]$cmbEngine.Items.Add("DeepSeek（便宜）")
 [void]$cmbEngine.Items.Add("Groq（快）")
 $cmbEngine.SelectedIndex = $(if ($script:engine -eq "groq") { 1 } else { 0 })
 $form.Controls.Add($cmbEngine)
 $cmbTarget = New-Object System.Windows.Forms.ComboBox
 $cmbTarget.DropDownStyle = "DropDownList"
-$cmbTarget.Location = New-Object System.Drawing.Point 380, 38
-$cmbTarget.Size = New-Object System.Drawing.Size 140, 28
+$cmbTarget.Location = New-Object System.Drawing.Point 396, 40
+$cmbTarget.Size = New-Object System.Drawing.Size 148, 28
+$cmbTarget.FlatStyle = "Flat"
+$cmbTarget.BackColor = $uiPaper
+$cmbTarget.ForeColor = $uiInk
 [void]$cmbTarget.Items.AddRange(@("双向：中英都出","只译中文","只译英文"))
 $cmbTarget.SelectedIndex = $(switch ($script:target) { "zh" { 1 } "en" { 2 } default { 0 } })
 $form.Controls.Add($cmbTarget)
-$lblHk = New-Lbl ("截屏快捷键：" + $script:hotkeys.capture) 530 42 300 22
+$lblHk = New-Lbl ("截屏快捷键：" + $script:hotkeys.capture) 552 44 420 22
 
 $pic = New-Object System.Windows.Forms.PictureBox
-$pic.Location = New-Object System.Drawing.Point 12, 74
-$pic.Size = New-Object System.Drawing.Size 940, 88
+$pic.Location = New-Object System.Drawing.Point 12, 76
+$pic.Size = New-Object System.Drawing.Size 960, 92
 $pic.SizeMode = "Zoom"
 $pic.BorderStyle = "FixedSingle"
-$pic.BackColor = [System.Drawing.Color]::FromArgb(14, 17, 22)
+$pic.BackColor = $uiPreview
 $form.Controls.Add($pic)
 $status = New-Lbl "可以先不填 Key，先测截屏。要识字时再临时填。" 12 166 940 20
 
 New-Lbl "原文（左边）" 12 190 200 20 | Out-Null
 $btnCopyOrig = New-Btn "复制原文" 220 186 80 24
 $orig = New-Box 12 212 470 280 $true
+$orig.Font = New-Object System.Drawing.Font "Consolas", 10
 New-Lbl "译文（右边，点这里回原文）" 498 190 260 20 | Out-Null
 $btnZh = New-Btn "中文" 760 186 50 24
 $btnEn = New-Btn "英文" 812 186 50 24
@@ -414,6 +440,33 @@ New-Lbl "回原文" 12 612 50 22 | Out-Null
 $hkBo = New-Box 62 610 140 24
 $btnRecBo = New-Btn "录制" 208 608 50 26
 
+foreach ($c in @($form.Controls)) { $c.Top += 56 }
+$header = New-Object System.Windows.Forms.Panel
+$header.Location = New-Object System.Drawing.Point 0, 0
+$header.Size = New-Object System.Drawing.Size 1000, 56
+$header.Anchor = "Top,Left,Right"
+$header.BackColor = $uiPaper
+$form.Controls.Add($header)
+$headerTitle = New-Object System.Windows.Forms.Label
+$headerTitle.Text = "截屏识别翻译"
+$headerTitle.Font = New-Object System.Drawing.Font "Microsoft YaHei UI", 14, [System.Drawing.FontStyle]::Bold
+$headerTitle.ForeColor = $uiInk
+$headerTitle.Location = New-Object System.Drawing.Point 16, 6
+$headerTitle.Size = New-Object System.Drawing.Size 360, 28
+$header.Controls.Add($headerTitle)
+$headerSub = New-Object System.Windows.Forms.Label
+$headerSub.Text = "框选即译 · 复制免费 · Key 只留在本次窗口 · 关掉即退出"
+$headerSub.ForeColor = $uiMute
+$headerSub.Location = New-Object System.Drawing.Point 18, 32
+$headerSub.Size = New-Object System.Drawing.Size 640, 20
+$header.Controls.Add($headerSub)
+$headerLine = New-Object System.Windows.Forms.Panel
+$headerLine.BackColor = $uiBrand
+$headerLine.Location = New-Object System.Drawing.Point 0, 54
+$headerLine.Size = New-Object System.Drawing.Size 1000, 2
+$headerLine.Anchor = "Top,Left,Right"
+$header.Controls.Add($headerLine)
+
 function Show-HotkeyBoxes {
   $hkCap.Text = $script:hotkeys.capture
   $hkCo.Text = $script:hotkeys.copyOrig
@@ -433,7 +486,7 @@ function Show-Trans {
 function Back-ToOrig {
   $orig.Focus()
   $status.Text = "已回到原文"
-  $status.ForeColor = [System.Drawing.Color]::FromArgb(61, 184, 168)
+  $status.ForeColor = $uiOk
 }
 
 function Close-InPlace {
@@ -473,24 +526,27 @@ function Show-InPlace($hint) {
   $f.Bounds = New-Object System.Drawing.Rectangle $x, $y, $w, $h
   $f.TopMost = $true
   $f.ShowInTaskbar = $false
-  $f.BackColor = [System.Drawing.Color]::FromArgb(18, 20, 24)
+  $f.BackColor = $uiPaper
   $f.KeyPreview = $true
   $f.Padding = New-Object System.Windows.Forms.Padding 0
 
   $bar = New-Object System.Windows.Forms.Panel
   $bar.Dock = "Top"
-  $bar.Height = 32
-  $bar.BackColor = [System.Drawing.Color]::FromArgb(27, 31, 39)
+  $bar.Height = 36
+  $bar.BackColor = [System.Drawing.Color]::FromArgb(239, 246, 255)
   $f.Controls.Add($bar)
 
   function Add-BarBtn($text, $left, $click) {
     $b = New-Object System.Windows.Forms.Button
     $b.Text = $text
-    $b.Location = New-Object System.Drawing.Point $left, 4
-    $b.Size = New-Object System.Drawing.Size 56, 24
+    $b.Location = New-Object System.Drawing.Point $left, 5
+    $b.Size = New-Object System.Drawing.Size 58, 26
     $b.FlatStyle = "Flat"
-    $b.ForeColor = [System.Drawing.Color]::FromArgb(232, 234, 237)
-    $b.BackColor = [System.Drawing.Color]::FromArgb(40, 46, 58)
+    $b.ForeColor = $uiInk
+    $b.BackColor = $uiPaper
+    $b.FlatAppearance.BorderColor = $uiLine
+    $b.FlatAppearance.MouseOverBackColor = $uiHover
+    $b.Cursor = [System.Windows.Forms.Cursors]::Hand
     $b.Add_Click($click)
     $bar.Controls.Add($b)
     return $b
@@ -508,7 +564,8 @@ function Show-InPlace($hint) {
   $tip.Text = $hint
   $tip.Dock = "Top"
   $tip.Height = 18
-  $tip.ForeColor = [System.Drawing.Color]::FromArgb(139, 147, 167)
+  $tip.ForeColor = $uiMute
+  $tip.BackColor = $uiPaper
   $f.Controls.Add($tip)
 
   $tb = New-Object System.Windows.Forms.TextBox
@@ -518,9 +575,9 @@ function Show-InPlace($hint) {
   $tb.Dock = "Fill"
   $tb.ReadOnly = $true
   $tb.BorderStyle = "None"
-  $tb.BackColor = [System.Drawing.Color]::FromArgb(18, 20, 24)
-  $tb.ForeColor = [System.Drawing.Color]::FromArgb(232, 234, 237)
-  $tb.Font = New-Object System.Drawing.Font "Segoe UI", 10
+  $tb.BackColor = $uiPaper
+  $tb.ForeColor = $uiInk
+  $tb.Font = New-Object System.Drawing.Font "Microsoft YaHei UI", 10
   $tb.Add_Click({
     if ($tb.SelectionLength -gt 0) { return }
     if ($script:bubbleMode -eq "trans") { $script:bubbleMode = "orig" } else { $script:bubbleMode = "trans" }
@@ -558,12 +615,12 @@ function Run-OcrFromBitmap($bmp, $inplace = $false) {
     $orig.Text = ""; $trans.Text = ""
     $script:last = @{ original = ""; zh = "未填 Key。框已经在原处。要识字再临时填。"; en = "" }
     $status.Text = "框选可以。未填 Key，译文泡在原处，不调用识别。"
-    $status.ForeColor = [System.Drawing.Color]::FromArgb(139, 147, 167)
+    $status.ForeColor = $uiMute
     if ($inplace) { Show-InPlace "未填 Key，只在原处出框" }
     return
   }
   Apply-Engine
-  $status.ForeColor = [System.Drawing.Color]::FromArgb(139, 147, 167)
+  $status.ForeColor = $uiMute
   $status.Text = "识别中，只请求官方 API..."
   $form.Refresh()
   $dataUrl = Bitmap-ToDataUrl $bmp
@@ -583,7 +640,7 @@ function Run-OcrFromBitmap($bmp, $inplace = $false) {
     if ($inplace) { Show-InPlace "点文字可回原文" } else { Show-InPlace "打开图片的结果" }
   } catch {
     $status.Text = $_.Exception.Message
-    $status.ForeColor = [System.Drawing.Color]::FromArgb(239, 107, 107)
+    $status.ForeColor = $uiErr
     if ($inplace) {
       $script:last = @{ original = ""; zh = $_.Exception.Message; en = "" }
       Show-InPlace "识别失败"
