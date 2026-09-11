@@ -56,9 +56,24 @@ $script:hotkeys = @{
   showWin = "Ctrl+Shift+H"
 }
 $script:engine = "deepseek"
-$script:target = "both"
-$script:last = @{ original = ""; zh = ""; en = ""; ja = "" }
-$script:transSide = "zh"
+$script:target = "zh"
+$script:langList = @(
+  @{ code = "zh"; menu = "译成中文"; prompt = "Simplified Chinese" },
+  @{ code = "en"; menu = "译成英文"; prompt = "English" },
+  @{ code = "ja"; menu = "译成日文"; prompt = "Japanese" },
+  @{ code = "ko"; menu = "译成韩文"; prompt = "Korean" },
+  @{ code = "fr"; menu = "译成法文"; prompt = "French" },
+  @{ code = "de"; menu = "译成德文"; prompt = "German" },
+  @{ code = "es"; menu = "译成西班牙文"; prompt = "Spanish" },
+  @{ code = "ru"; menu = "译成俄文"; prompt = "Russian" },
+  @{ code = "ar"; menu = "译成阿拉伯文"; prompt = "Arabic" },
+  @{ code = "pt"; menu = "译成葡萄牙文"; prompt = "Portuguese" },
+  @{ code = "vi"; menu = "译成越南文"; prompt = "Vietnamese" },
+  @{ code = "th"; menu = "译成泰文"; prompt = "Thai" },
+  @{ code = "id"; menu = "译成印尼文"; prompt = "Indonesian" },
+  @{ code = "it"; menu = "译成意大利文"; prompt = "Italian" }
+)
+$script:last = @{ original = ""; trans = ""; zh = ""; en = "" }
 $script:recording = $null
 $script:hotkeyId = 0x4F43
 $script:showHotkeyId = 0x4F44
@@ -81,7 +96,13 @@ function Load-Settings {
   $raw = Get-Content -LiteralPath $script:settingsPath -Raw -Encoding UTF8
   $obj = $raw | ConvertFrom-Json
   if ($obj.engine) { $script:engine = [string]$obj.engine }
-  if ($obj.target) { $script:target = [string]$obj.target }
+  if ($obj.target) {
+    $t = [string]$obj.target
+    if ($t -eq "both") { $t = "zh" }
+    $ok = $false
+    foreach ($item in $script:langList) { if ($item.code -eq $t) { $ok = $true; break } }
+    if ($ok) { $script:target = $t }
+  }
   foreach ($n in @("capture","copyOrig","copyTrans","backOrig","showWin")) {
     if ($obj.hotkeys -and $obj.hotkeys.$n) { $script:hotkeys[$n] = [string]$obj.hotkeys.$n }
   }
@@ -308,16 +329,24 @@ function Bitmap-ToDataUrl($bmp) {
   return "data:image/png;base64,$b64"
 }
 
+function Current-LangPrompt {
+  foreach ($item in $script:langList) {
+    if ($item.code -eq $script:target) { return $item.prompt }
+  }
+  return "Simplified Chinese"
+}
+
 function Ocr-Prompt {
-  return @'
+  $lang = Current-LangPrompt
+  return @"
 You are a screenshot OCR engine for software UI, terminals, logs, and source code.
 1) Transcribe EVERY visible character exactly into "original".
-2) Bidirectional translation: "zh" Simplified Chinese, "en" English.
+2) Translate natural-language sentences into $lang. Put that translation in "trans".
 Hard rules for original: do NOT insert spaces into identifiers like getUserName, HttpResponse, FILE_NOT_FOUND.
 Keep camelCase/PascalCase/snake_case/line breaks. Do not markdown.
-Leave identifiers, paths, URLs, commands unchanged in zh and en.
-Return JSON only: {"original":"...","zh":"...","en":"..."}
-'@
+Leave identifiers, paths, URLs, commands unchanged in trans.
+Return JSON only: {"original":"...","trans":"..."}
+"@
 }
 
 function Call-Chat([string]$baseUrl, [string]$apiKey, [string[]]$models, [string]$dataUrl) {
@@ -356,11 +385,14 @@ function Parse-Result([string]$text) {
   $s = $text.IndexOf("{"); $e = $text.LastIndexOf("}")
   if ($s -lt 0 -or $e -lt 0) { throw "模型没返回 JSON" }
   $o = $text.Substring($s, $e - $s + 1) | ConvertFrom-Json
+  $tr = [string]$o.trans
+  if (-not $tr) { $tr = [string]$o.zh }
+  if (-not $tr) { $tr = [string]$o.en }
   return @{
     original = [string]$o.original
-    zh = [string]$o.zh
-    en = [string]$o.en
-    ja = [string]$o.ja
+    trans = $tr
+    zh = $tr
+    en = $tr
   }
 }
 
@@ -450,14 +482,18 @@ $form.Controls.Add($cmbEngine)
 $cmbTarget = New-Object System.Windows.Forms.ComboBox
 $cmbTarget.DropDownStyle = "DropDownList"
 $cmbTarget.Location = New-Object System.Drawing.Point 448, 56
-$cmbTarget.Size = New-Object System.Drawing.Size 160, 28
+$cmbTarget.Size = New-Object System.Drawing.Size 168, 28
 $cmbTarget.FlatStyle = "Flat"
 $cmbTarget.BackColor = $uiPaper
 $cmbTarget.ForeColor = $uiInk
-[void]$cmbTarget.Items.AddRange(@("双向：中英都出","只译中文","只译英文"))
-$cmbTarget.SelectedIndex = $(switch ($script:target) { "zh" { 1 } "en" { 2 } default { 0 } })
+$ti = 0
+for ($i = 0; $i -lt $script:langList.Count; $i++) {
+  [void]$cmbTarget.Items.Add($script:langList[$i].menu)
+  if ($script:langList[$i].code -eq $script:target) { $ti = $i }
+}
+$cmbTarget.SelectedIndex = $ti
 $form.Controls.Add($cmbTarget)
-$lblHk = New-Lbl ("截屏快捷键：" + $script:hotkeys.capture) 628 60 360 22
+$lblHk = New-Lbl ("截屏快捷键：" + $script:hotkeys.capture) 640 60 360 22
 
 $picFrame = New-Object System.Windows.Forms.Panel
 $picFrame.Location = New-Object System.Drawing.Point 16, 102
@@ -485,9 +521,7 @@ try {
 $lblTransTitle = New-Lbl "译文（右边）" 556 236 300 26
 $lblTransTitle.AutoSize = $true
 $btnCopyTrans = New-Btn "复制译文" 556 266 120 30
-$btnZh = New-Btn "中文" 688 266 60 30
-$btnEn = New-Btn "英文" 760 266 60 30
-$btnBack = New-Btn "回到原文" 832 266 120 30
+$btnBack = New-Btn "回到原文" 688 266 120 30
 $trans = New-Box 556 304 520 240 $true
 $trans.ReadOnly = $true
 
@@ -551,8 +585,9 @@ function Show-HotkeyBoxes {
 Show-HotkeyBoxes
 
 function Current-Trans {
-  if ($script:transSide -eq "en") { return $script:last.en }
-  return $script:last.zh
+  if ($script:last.trans) { return $script:last.trans }
+  if ($script:last.zh) { return $script:last.zh }
+  return $script:last.en
 }
 function Show-Trans {
   $trans.Text = Current-Trans
@@ -706,14 +741,15 @@ function Show-MainWindow {
   if ($script:bubble -and -not $script:bubble.IsDisposed) {
     $script:bubble.TopMost = $true
     $script:bubble.Activate()
-  } elseif ($script:capW -ge 8 -and ($script:last.original -or $script:last.zh)) {
+  } elseif ($script:capW -ge 8 -and ($script:last.original -or $script:last.trans -or $script:last.zh)) {
     Show-InPlace "已呼出"
   }
 }
 
 function Apply-Engine {
   $script:engine = $(if ($cmbEngine.SelectedIndex -eq 1) { "groq" } else { "deepseek" })
-  $script:target = $(switch ($cmbTarget.SelectedIndex) { 1 { "zh" } 2 { "en" } default { "both" } })
+  $idx = $cmbTarget.SelectedIndex
+  if ($idx -ge 0 -and $idx -lt $script:langList.Count) { $script:target = $script:langList[$idx].code }
   Save-Settings
 }
 
@@ -723,7 +759,7 @@ function Run-OcrFromBitmap($bmp, $inplace = $false) {
   $ds = $txtDs.Text.Trim(); $gq = $txtGq.Text.Trim()
   if (-not $ds -and -not $gq) {
     $orig.Text = ""; $trans.Text = ""
-    $script:last = @{ original = ""; zh = "未填 Key。框已经在原处。要识字再临时填。"; en = "" }
+    $script:last = @{ original = ""; trans = "未填 Key。框已经在原处。要识字再临时填。"; zh = ""; en = "" }
     $status.Text = "框选可以。未填 Key，译文泡在原处，不调用识别。"
     $status.ForeColor = $uiMute
     if ($inplace) { Show-InPlace "未填 Key，只在原处出框" }
@@ -744,7 +780,6 @@ function Run-OcrFromBitmap($bmp, $inplace = $false) {
     }
     $script:last = Parse-Result $r.text
     $orig.Text = $script:last.original
-    if ($script:target -eq "en") { $script:transSide = "en" } else { $script:transSide = "zh" }
     Show-Trans
     $status.Text = "完成，译文在框选原处。点浮层可回原文。"
     if ($inplace) { Show-InPlace "点文字可回原文" } else { Show-InPlace "打开图片的结果" }
@@ -752,7 +787,7 @@ function Run-OcrFromBitmap($bmp, $inplace = $false) {
     $status.Text = $_.Exception.Message
     $status.ForeColor = $uiErr
     if ($inplace) {
-      $script:last = @{ original = ""; zh = $_.Exception.Message; en = "" }
+      $script:last = @{ original = ""; trans = $_.Exception.Message; zh = ""; en = "" }
       Show-InPlace "识别失败"
     }
   }
@@ -781,8 +816,6 @@ $btnCopyTrans.Add_Click({
   $status.Text = "已复制译文"
 })
 $btnBack.Add_Click({ Back-ToOrig })
-$btnZh.Add_Click({ $script:transSide = "zh"; Show-Trans })
-$btnEn.Add_Click({ $script:transSide = "en"; Show-Trans })
 $trans.Add_Click({
   if ($trans.SelectionLength -gt 0) { return }
   Back-ToOrig
