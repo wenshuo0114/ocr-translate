@@ -143,14 +143,18 @@ function Combo-FromKeyEvent($e) {
   if ($e.Shift) { $parts += "Shift" }
   if ($e.Alt) { $parts += "Alt" }
   $k = $e.KeyCode.ToString()
-  if ($k -in @("ControlKey","ShiftKey","Menu","LWin","RWin")) { return ($parts -join "+") }
-  if ($k.Length -eq 1) { $k = $k.ToUpper() }
+  if ($k -in @("ControlKey","ShiftKey","Menu","LControlKey","RControlKey","LShiftKey","RShiftKey","LMenu","RMenu","LWin","RWin")) {
+    return ($parts -join "+")
+  }
+  if ($k -match "^D([0-9])$") { $k = $Matches[1] }
+  elseif ($k.Length -eq 1) { $k = $k.ToUpper() }
   $parts += $k
   return ($parts -join "+")
 }
 
 function Combo-Valid([string]$combo) {
-  return $combo -match "^(Ctrl|Shift|Alt|Win)\+"
+  if ($combo -notmatch "^(Ctrl|Shift|Alt|Win)\+") { return $false }
+  return $null -ne (Parse-Combo $combo)
 }
 
 function Event-Matches($e, [string]$combo) {
@@ -850,7 +854,37 @@ $cmbTarget.Add_SelectedIndexChanged({ Apply-Engine })
 
 function Start-Record($name) {
   $script:recording = $name
-  $status.Text = "正在录制快捷键，按组合。Esc 取消。"
+  try { [OcrHotKeyForm]::UnregisterHotKey($form.Handle, $script:hotkeyId) | Out-Null } catch {}
+  try { [OcrHotKeyForm]::UnregisterHotKey($form.Handle, $script:showHotkeyId) | Out-Null } catch {}
+  $form.ActiveControl = $status
+  $form.Focus()
+  $status.Text = "正在录制：先按住 Ctrl 或 Shift 或 Alt，再按字母/数字/F1-F12。Esc 取消。旧快捷键已暂时放开。"
+}
+
+function Try-FinishRecord($e) {
+  if (-not $script:recording) { return $false }
+  if ($e.KeyCode -eq "Escape") {
+    $script:recording = $null
+    Show-HotkeyBoxes
+    Bind-Hotkeys
+    $status.Text = "已取消录制"
+    $e.SuppressKeyPress = $true
+    return $true
+  }
+  $combo = Combo-FromKeyEvent $e
+  if ($combo -notmatch "\+") { return $true }
+  if (-not (Combo-Valid $combo)) {
+    $status.Text = "这个组合录不了。请用 Ctrl/Shift/Alt + 字母、数字或 F1-F12。"
+    return $true
+  }
+  $e.SuppressKeyPress = $true
+  $script:hotkeys[$script:recording] = $combo
+  $script:recording = $null
+  Show-HotkeyBoxes
+  Save-Settings
+  Bind-Hotkeys
+  $status.Text = "快捷键已更新：$combo"
+  return $true
 }
 $btnRecCap.Add_Click({ Start-Record "capture" })
 $btnRecCo.Add_Click({ Start-Record "copyOrig" })
@@ -858,25 +892,11 @@ $btnRecCt.Add_Click({ Start-Record "copyTrans" })
 $btnRecBo.Add_Click({ Start-Record "backOrig" })
 $btnRecShow.Add_Click({ Start-Record "showWin" })
 
+$form.Add_PreviewKeyDown({
+  if ($script:recording) { $_.IsInputKey = $true }
+})
 $form.Add_KeyDown({
-  if ($script:recording) {
-    if ($_.KeyCode -eq "Escape") {
-      $script:recording = $null
-      Show-HotkeyBoxes
-      $status.Text = "已取消录制"
-      return
-    }
-    $combo = Combo-FromKeyEvent $_
-    if (-not (Combo-Valid $combo)) { return }
-    $_.SuppressKeyPress = $true
-    $script:hotkeys[$script:recording] = $combo
-    $script:recording = $null
-    Show-HotkeyBoxes
-    Save-Settings
-    Bind-Hotkeys
-    $status.Text = "快捷键已更新：$combo"
-    return
-  }
+  if (Try-FinishRecord $_) { return }
   $onBox = [System.Windows.Forms.Form]::ActiveControl -is [System.Windows.Forms.TextBox]
   if ($onBox) { return }
   if (Event-Matches $_ $script:hotkeys.capture) { $_.SuppressKeyPress = $true; Run-OcrFromBitmap (Capture-Region) $true }
