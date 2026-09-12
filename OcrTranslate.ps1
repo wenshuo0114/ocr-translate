@@ -24,6 +24,7 @@ function New-UiFont([single]$size, [bool]$bold = $false) {
 # 下面这一小段 C# 只做一件事：让窗口能接收系统快捷键。
 # ReferencedAssemblies = 引用本机已有的窗口库，不从网上拉包。
 # @" ... "@ 是 PowerShell 多行字符串，把这段 C# 嵌进来编译。不是业务代码，也不是密钥。
+if (-not ("OcrHotKeyForm" -as [type])) {
 Add-Type -ReferencedAssemblies System.dll,System.Windows.Forms.dll,System.Drawing.dll @"
 using System;
 using System.Windows.Forms;
@@ -45,7 +46,8 @@ public class OcrHotKeyForm : Form {
   public event EventHandler ShowHotKey;
 }
 "@
-[OcrHotKeyForm]::SetProcessDPIAware() | Out-Null
+}
+try { [OcrHotKeyForm]::SetProcessDPIAware() | Out-Null } catch {}
 
 $script:settingsPath = Join-Path $env:APPDATA "ocr-translate\settings.json"
 $script:hotkeys = @{
@@ -91,32 +93,56 @@ $script:vsTop = 0
 $script:bubble = $null
 $script:bubbleMode = "trans"
 
+function Default-Hotkeys {
+  return @{
+    capture = "Ctrl+Shift+S"
+    copyOrig = "Ctrl+Shift+C"
+    copyTrans = "Ctrl+Shift+T"
+    backOrig = "Ctrl+Shift+B"
+    showWin = "Ctrl+Shift+H"
+  }
+}
+
 function Load-Settings {
   if (-not (Test-Path $script:settingsPath)) { return }
-  $raw = Get-Content -LiteralPath $script:settingsPath -Raw -Encoding UTF8
-  $obj = $raw | ConvertFrom-Json
-  if ($obj.engine) { $script:engine = [string]$obj.engine }
-  if ($obj.target) {
-    $t = [string]$obj.target
-    if ($t -eq "both") { $t = "zh" }
-    $ok = $false
-    foreach ($item in $script:langList) { if ($item.code -eq $t) { $ok = $true; break } }
-    if ($ok) { $script:target = $t }
-  }
-  foreach ($n in @("capture","copyOrig","copyTrans","backOrig","showWin")) {
-    if ($obj.hotkeys -and $obj.hotkeys.$n) { $script:hotkeys[$n] = [string]$obj.hotkeys.$n }
+  try {
+    $raw = Get-Content -LiteralPath $script:settingsPath -Raw -Encoding UTF8
+    $obj = $raw | ConvertFrom-Json
+    if ($obj.engine) { $script:engine = [string]$obj.engine }
+    if ($obj.target) {
+      $t = [string]$obj.target
+      if ($t -eq "both") { $t = "zh" }
+      $ok = $false
+      foreach ($item in $script:langList) { if ($item.code -eq $t) { $ok = $true; break } }
+      if ($ok) { $script:target = $t }
+    }
+    foreach ($n in @("capture","copyOrig","copyTrans","backOrig","showWin")) {
+      $v = $null
+      try { $v = [string]$obj.hotkeys.$n } catch { $v = $null }
+      if ($v -and (Parse-Combo $v)) { $script:hotkeys[$n] = $v }
+    }
+  } catch {
+    $script:hotkeys = Default-Hotkeys
   }
 }
 
 function Save-Settings {
-  $dir = Split-Path $script:settingsPath
-  if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
-  $payload = @{
-    engine = $script:engine
-    target = $script:target
-    hotkeys = $script:hotkeys
-  } | ConvertTo-Json -Depth 4
-  Set-Content -LiteralPath $script:settingsPath -Value $payload -Encoding UTF8
+  try {
+    $dir = Split-Path $script:settingsPath
+    if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
+    $payload = @{
+      engine = $script:engine
+      target = $script:target
+      hotkeys = [pscustomobject]@{
+        capture = [string]$script:hotkeys.capture
+        copyOrig = [string]$script:hotkeys.copyOrig
+        copyTrans = [string]$script:hotkeys.copyTrans
+        backOrig = [string]$script:hotkeys.backOrig
+        showWin = [string]$script:hotkeys.showWin
+      }
+    } | ConvertTo-Json -Depth 4
+    Set-Content -LiteralPath $script:settingsPath -Value $payload -Encoding UTF8
+  } catch {}
 }
 
 function Parse-Combo([string]$combo) {
@@ -559,7 +585,7 @@ $txtDs = New-Box 16 586 520 30 $false $true
 New-Lbl "Groq Key（选填，同样不保存）" 556 560 360 22 | Out-Null
 $txtGq = New-Box 556 586 520 30 $false $true
 
-New-Lbl "自定义快捷键：点录制再按组合，至少带 Ctrl/Shift/Alt。只存按键，不存 Key。" 16 640 1060 24 | Out-Null
+New-Lbl "自定义快捷键：点录制再按组合，至少带 Ctrl/Shift/Alt。录错了点「恢复默认」，不要关到打不开。只存按键，不存 Key。" 16 640 1060 24 | Out-Null
 New-Lbl "截屏" 16 680 56 24 | Out-Null
 $hkCap = New-Box 76 678 180 30
 $btnRecCap = New-Btn "录制" 264 676 60 32
@@ -575,6 +601,7 @@ $btnRecBo = New-Btn "录制" 618 728 60 32
 New-Lbl "呼出" 16 784 56 24 | Out-Null
 $hkShow = New-Box 76 782 180 30
 $btnRecShow = New-Btn "录制" 264 780 60 32
+$btnResetHk = New-Btn "恢复默认" 356 780 88 32
 
 foreach ($c in @($form.Controls)) { $c.Top += 88 }
 $header = New-Object System.Windows.Forms.Panel
@@ -744,17 +771,25 @@ function Show-InPlace($hint) {
 }
 
 function Bind-Hotkeys {
-  try { [OcrHotKeyForm]::UnregisterHotKey($form.Handle, $script:hotkeyId) | Out-Null } catch {}
-  try { [OcrHotKeyForm]::UnregisterHotKey($form.Handle, $script:showHotkeyId) | Out-Null } catch {}
-  $p = Parse-Combo $script:hotkeys.capture
-  if ($p) {
-    $okHk = [OcrHotKeyForm]::RegisterHotKey($form.Handle, $script:hotkeyId, $p.mod, $p.vk)
-    if (-not $okHk) { $status.Text = "截屏快捷键被占用：" + $script:hotkeys.capture }
-  }
-  $p2 = Parse-Combo $script:hotkeys.showWin
-  if ($p2) {
-    $okShow = [OcrHotKeyForm]::RegisterHotKey($form.Handle, $script:showHotkeyId, $p2.mod, $p2.vk)
-    if (-not $okShow) { $status.Text = "呼出快捷键被占用：" + $script:hotkeys.showWin }
+  try {
+    try { [OcrHotKeyForm]::UnregisterHotKey($form.Handle, $script:hotkeyId) | Out-Null } catch {}
+    try { [OcrHotKeyForm]::UnregisterHotKey($form.Handle, $script:showHotkeyId) | Out-Null } catch {}
+    $p = Parse-Combo $script:hotkeys.capture
+    if ($p) {
+      $okHk = [OcrHotKeyForm]::RegisterHotKey($form.Handle, $script:hotkeyId, $p.mod, $p.vk)
+      if (-not $okHk) { $status.Text = "截屏快捷键被占用，可点恢复默认：" + $script:hotkeys.capture }
+    } else {
+      $script:hotkeys.capture = "Ctrl+Shift+S"
+    }
+    $p2 = Parse-Combo $script:hotkeys.showWin
+    if ($p2) {
+      $okShow = [OcrHotKeyForm]::RegisterHotKey($form.Handle, $script:showHotkeyId, $p2.mod, $p2.vk)
+      if (-not $okShow) { $status.Text = "呼出快捷键被占用，可点恢复默认：" + $script:hotkeys.showWin }
+    } else {
+      $script:hotkeys.showWin = "Ctrl+Shift+H"
+    }
+  } catch {
+    $status.Text = "快捷键绑定失败，已忽略，窗口仍可用。"
   }
 }
 
@@ -856,9 +891,18 @@ function Start-Record($name) {
   $script:recording = $name
   try { [OcrHotKeyForm]::UnregisterHotKey($form.Handle, $script:hotkeyId) | Out-Null } catch {}
   try { [OcrHotKeyForm]::UnregisterHotKey($form.Handle, $script:showHotkeyId) | Out-Null } catch {}
-  $form.ActiveControl = $status
-  $form.Focus()
+  try { $form.ActiveControl = $null } catch {}
+  [void]$form.Focus()
   $status.Text = "正在录制：先按住 Ctrl 或 Shift 或 Alt，再按字母/数字/F1-F12。Esc 取消。旧快捷键已暂时放开。"
+}
+
+function Reset-Hotkeys {
+  $script:recording = $null
+  $script:hotkeys = Default-Hotkeys
+  Show-HotkeyBoxes
+  Save-Settings
+  Bind-Hotkeys
+  $status.Text = "快捷键已恢复默认。窗口可以继续用。"
 }
 
 function Try-FinishRecord($e) {
@@ -891,6 +935,7 @@ $btnRecCo.Add_Click({ Start-Record "copyOrig" })
 $btnRecCt.Add_Click({ Start-Record "copyTrans" })
 $btnRecBo.Add_Click({ Start-Record "backOrig" })
 $btnRecShow.Add_Click({ Start-Record "showWin" })
+$btnResetHk.Add_Click({ Reset-Hotkeys })
 
 $form.Add_PreviewKeyDown({
   if ($script:recording) { $_.IsInputKey = $true }
