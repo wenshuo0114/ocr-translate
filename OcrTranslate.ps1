@@ -348,7 +348,8 @@ The user MUST verify AI-written code. Do not skip identifiers.
    - Natural-language sentences: normal translation.
    - Identifiers / program names / API names: split the glued words, then translate. Example: getUserName -> 获取用户名 ; PluginSalesStrategy -> 插件销售策略 ; FILE_NOT_FOUND -> 未找到文件.
    - After the translation, you may put the original identifier in parentheses once.
-   - Paths and URLs: keep the path symbols, but translate folder/file meaning if it is English words.
+   - File names and bare paths (System Volume Information, FirPE.exe) are not sentences; trans may stay close to the original name.
+   - Paths and URLs: keep the path symbols. Do not invent a sentence around a file name.
 
 Never leave identifiers unchanged in trans just because they look like code.
 Return JSON only: {"original":"...","trans":"..."}
