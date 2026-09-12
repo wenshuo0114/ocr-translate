@@ -8,9 +8,23 @@ Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
 trap {
-  try { [void][System.Windows.Forms.MessageBox]::Show([string]$_, "启动失败") } catch {}
+  $msg = [string]$_
+  try { Set-Content -LiteralPath (Join-Path $PSScriptRoot "last-start-error.txt") -Value $msg -Encoding UTF8 } catch {}
+  try { [void][System.Windows.Forms.MessageBox]::Show($msg, "启动失败") } catch {}
   break
 }
+
+# 只关「用 -File 打开的旧识别窗」，不杀当前这个进程，也不误伤 Cursor。
+try {
+  Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | Where-Object {
+    $_.ProcessId -ne $PID -and
+    $_.CommandLine -and
+    $_.CommandLine -match '-File' -and
+    ($_.CommandLine -match 'OcrTranslate\.ps1' -or $_.CommandLine -match 'run\.ps1')
+  } | ForEach-Object {
+    Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
+  }
+} catch {}
 
 function New-UiFont([single]$size, [bool]$bold = $false) {
   $style = [System.Drawing.FontStyle]::Regular

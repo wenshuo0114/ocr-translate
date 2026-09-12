@@ -6,7 +6,7 @@
   仓库：https://github.com/wenshuo0114/ocr-translate
 
 启动
-  双击 start.bat
+  双击 start.bat（它会调用同目录 run.ps1，再按 UTF-8 打开窗口，避免中文乱码）。
   只开这一个窗口。关掉窗口，程序就结束。没有后台。
   界面是浅色：白底、蓝按钮，不再是一整片黑。
   中文变成 æä»l 那种是编码问题，已经修好。必须先关掉旧窗口，再双击 start.bat。旧窗口还在跑的是旧脚本。Key 要重填。
@@ -56,6 +56,6 @@
   右边若是 æä»l 这种乱码：关窗重开。已按 UTF-8 修过。
 
 给朋友 / 公开
-  只发这两个文件：OcrTranslate.ps1 、 start.bat ，外加这份说明。
+  要发：start.bat、run.ps1、OcrTranslate.ps1，外加这份说明。少了 run.ps1 窗口会打不开。
   各人填自己的 Key。
   上架、收费：要有合法执照，再走审核。未审核前不售卖。
