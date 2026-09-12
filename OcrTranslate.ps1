@@ -340,13 +340,32 @@ function Ocr-Prompt {
   $lang = Current-LangPrompt
   return @"
 You are a screenshot OCR engine for software UI, terminals, logs, and source code.
-1) Transcribe EVERY visible character exactly into "original".
-2) Translate natural-language sentences into $lang. Put that translation in "trans".
-Hard rules for original: do NOT insert spaces into identifiers like getUserName, HttpResponse, FILE_NOT_FOUND.
-Keep camelCase/PascalCase/snake_case/line breaks. Do not markdown.
-Leave identifiers, paths, URLs, commands unchanged in trans.
+The user MUST verify AI-written code. Do not skip identifiers.
+
+1) "original": copy EVERY visible character exactly. Do NOT insert spaces into identifiers (getUserName, HttpResponse, FILE_NOT_FOUND, PluginSalesStrategy). Keep camelCase/PascalCase/snake_case and line breaks. No markdown.
+
+2) "trans": translate into $lang so a human can check meaning.
+   - Natural-language sentences: normal translation.
+   - Identifiers / program names / API names: split the glued words, then translate. Example: getUserName -> 获取用户名 ; PluginSalesStrategy -> 插件销售策略 ; FILE_NOT_FOUND -> 未找到文件.
+   - After the translation, you may put the original identifier in parentheses once.
+   - Paths and URLs: keep the path symbols, but translate folder/file meaning if it is English words.
+
+Never leave identifiers unchanged in trans just because they look like code.
 Return JSON only: {"original":"...","trans":"..."}
 "@
+}
+
+function Repair-Utf8Mojibake([string]$s) {
+  if ([string]::IsNullOrEmpty($s)) { return $s }
+  if ($s -match '[\u4e00-\u9fff]') { return $s }
+  foreach ($cp in @(28591, 1252)) {
+    try {
+      $bytes = [System.Text.Encoding]::GetEncoding($cp).GetBytes($s)
+      $fixed = [System.Text.Encoding]::UTF8.GetString($bytes)
+      if ($fixed -match '[\u4e00-\u9fff]') { return $fixed }
+    } catch {}
+  }
+  return $s
 }
 
 function Call-Chat([string]$baseUrl, [string]$apiKey, [string[]]$models, [string]$dataUrl) {
@@ -369,10 +388,15 @@ function Call-Chat([string]$baseUrl, [string]$apiKey, [string[]]$models, [string
       )
     } | ConvertTo-Json -Depth 8 -Compress
     try {
-      $res = Invoke-RestMethod -Method Post -Uri ($baseUrl.TrimEnd("/") + "/chat/completions") -Headers @{
+      $wr = Invoke-WebRequest -Method Post -Uri ($baseUrl.TrimEnd("/") + "/chat/completions") -Headers @{
         Authorization = "Bearer $apiKey"
       } -ContentType "application/json; charset=utf-8" -Body ([System.Text.Encoding]::UTF8.GetBytes($body)) -TimeoutSec 90
-      $text = $res.choices[0].message.content
+      $ms = New-Object System.IO.MemoryStream
+      $wr.RawContentStream.Position = 0
+      $wr.RawContentStream.CopyTo($ms)
+      $raw = [System.Text.Encoding]::UTF8.GetString($ms.ToArray())
+      $res = $raw | ConvertFrom-Json
+      $text = [string]$res.choices[0].message.content
       return @{ model = $model; text = $text }
     } catch {
       $lastErr = "$model : $($_.Exception.Message)"
@@ -385,11 +409,11 @@ function Parse-Result([string]$text) {
   $s = $text.IndexOf("{"); $e = $text.LastIndexOf("}")
   if ($s -lt 0 -or $e -lt 0) { throw "模型没返回 JSON" }
   $o = $text.Substring($s, $e - $s + 1) | ConvertFrom-Json
-  $tr = [string]$o.trans
-  if (-not $tr) { $tr = [string]$o.zh }
-  if (-not $tr) { $tr = [string]$o.en }
+  $tr = Repair-Utf8Mojibake ([string]$o.trans)
+  if (-not $tr) { $tr = Repair-Utf8Mojibake ([string]$o.zh) }
+  if (-not $tr) { $tr = Repair-Utf8Mojibake ([string]$o.en) }
   return @{
-    original = [string]$o.original
+    original = Repair-Utf8Mojibake ([string]$o.original)
     trans = $tr
     zh = $tr
     en = $tr
